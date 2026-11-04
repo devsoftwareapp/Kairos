@@ -52,7 +52,7 @@ private enum class CapsuleType(val label: String, val icon: ImageVector) {
     PHOTO("Fotoğraf", Icons.Default.Image)
 }
 private data class Capsule(
-    val id: Long,
+    val id: String,
     val title: String,
     val type: CapsuleType,
     val message: String,
@@ -85,7 +85,7 @@ private fun KairosApp(activity: FragmentActivity) {
         val summaries = runCatching { repository.summaries(rows) }.getOrDefault(emptyList())
         capsules.clear()
         capsules.addAll(summaries.map { row ->
-            Capsule(row.id.hashCode().toLong(), row.title,
+            Capsule(row.id, row.title,
                 when (row.type) { "VOICE" -> CapsuleType.VOICE; "PHOTO" -> CapsuleType.PHOTO; else -> CapsuleType.LETTER },
                 "", row.unlockAt, row.createdAt)
         })
@@ -137,7 +137,7 @@ private fun KairosApp(activity: FragmentActivity) {
                             BiometricGate.authenticate(activity,
                                 onSuccess = {
                                     scope.launch {
-                                        runCatching { repository.readPayload(capsule.id.toString()) }
+                                        runCatching { repository.readPayload(capsule.id) }
                                             .onSuccess { bytes ->
                                                 if (capsule.type == CapsuleType.LETTER) openedContent = bytes.toString(Charsets.UTF_8)
                                                 else detailStatus = "Bu kapsül türünün içerik oynatıcısı sonraki entegrasyonda tamamlanacak."
