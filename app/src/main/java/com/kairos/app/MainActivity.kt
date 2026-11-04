@@ -1,7 +1,7 @@
 package com.devsoftware.kairos
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -36,6 +36,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devsoftware.kairos.ui.theme.KairosTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.devsoftware.kairos.data.CapsuleRepository
+import com.devsoftware.kairos.data.CapsuleDraft
+import com.devsoftware.kairos.notifications.ReminderScheduler
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,19 +62,31 @@ private data class Capsule(
 }
 private enum class Page { HOME, CREATE, DETAIL, SETTINGS }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { KairosTheme { KairosApp() } }
+        setContent { KairosTheme { KairosApp(this) } }
     }
 }
 
 @Composable
-private fun KairosApp() {
+private fun KairosApp(activity: FragmentActivity) {
     var dark by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(Page.HOME) }
     var selected by remember { mutableStateOf<Capsule?>(null) }
+    val repository = remember { CapsuleRepository(activity) }
+    val rows by repository.observeCapsules().collectAsStateWithLifecycle(initialValue = emptyList())
+    val scope = rememberCoroutineScope()
     val capsules = remember { mutableStateListOf<Capsule>() }
+    LaunchedEffect(rows) {
+        val summaries = runCatching { repository.summaries(rows) }.getOrDefault(emptyList())
+        capsules.clear()
+        capsules.addAll(summaries.map { row ->
+            Capsule(row.id.hashCode().toLong(), row.title,
+                when (row.type) { "VOICE" -> CapsuleType.VOICE; "PHOTO" -> CapsuleType.PHOTO; else -> CapsuleType.LETTER },
+                "", row.unlockAt, row.createdAt)
+        })
+    }
 
     MaterialTheme(
         colorScheme = if (dark) darkColorScheme(
@@ -99,8 +116,12 @@ private fun KairosApp() {
             Page.CREATE -> CreatePage(
                 onBack = { page = Page.HOME },
                 onSave = { title, type, message, unlock ->
-                    capsules.add(0, Capsule(System.nanoTime(), title, type, message, unlock))
-                    page = Page.HOME
+                    scope.launch {
+                        runCatching {
+                            val id = repository.create(CapsuleDraft(title, type.name, unlock, message.toByteArray(Charsets.UTF_8)))
+                            ReminderScheduler.schedule(activity, id, title, unlock)
+                        }.onSuccess { page = Page.HOME }
+                    }
                 }
             )
             Page.DETAIL -> selected?.let {
