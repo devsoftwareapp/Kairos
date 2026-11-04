@@ -1,39 +1,24 @@
 package com.devsoftware.kairos.security
-
+import java.nio.ByteBuffer
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-
-/**
- * AES-GCM primitive only. Production key wrapping, Keystore policy,
- * recovery and time-lock protocol must be implemented and security-reviewed
- * before storing real user content.
- */
-object AesGcmCrypto {
-    private const val TRANSFORMATION = "AES/GCM/NoPadding"
-    private const val NONCE_BYTES = 12
-    private const val TAG_BITS = 128
-
-    data class SealedData(val nonce: ByteArray, val ciphertext: ByteArray)
-
-    fun generateContentKey(): SecretKey =
-        KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
-
-    fun encrypt(key: SecretKey, plaintext: ByteArray, aad: ByteArray? = null): SealedData {
-        val nonce = ByteArray(NONCE_BYTES).also { SecureRandom().nextBytes(it) }
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_BITS, nonce))
-        aad?.let(cipher::updateAAD)
-        return SealedData(nonce, cipher.doFinal(plaintext))
-    }
-
-    fun decrypt(key: SecretKey, sealed: SealedData, aad: ByteArray? = null): ByteArray {
-        require(sealed.nonce.size == NONCE_BYTES) { "Invalid GCM nonce" }
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, sealed.nonce))
-        aad?.let(cipher::updateAAD)
-        return cipher.doFinal(sealed.ciphertext)
-    }
+object AesGcmCrypto{
+ private const val NONCE=12
+ data class SealedData(val nonce:ByteArray,val ciphertext:ByteArray)
+ fun generateContentKey():SecretKey=KeyGenerator.getInstance("AES").apply{init(256)}.generateKey()
+ fun encrypt(key:SecretKey,plain:ByteArray,aad:ByteArray?=null):SealedData{
+  val nonce=ByteArray(NONCE).also{SecureRandom().nextBytes(it)}
+  val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,key,GCMParameterSpec(128,nonce));aad?.let(c::updateAAD)
+  return SealedData(nonce,c.doFinal(plain))
+ }
+ fun decrypt(key:SecretKey,data:SealedData,aad:ByteArray?=null):ByteArray{
+  require(data.nonce.size==NONCE)
+  val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,key,GCMParameterSpec(128,data.nonce));aad?.let(c::updateAAD)
+  return c.doFinal(data.ciphertext)
+ }
+ fun pack(d:SealedData)=ByteBuffer.allocate(d.nonce.size+d.ciphertext.size).put(d.nonce).put(d.ciphertext).array()
+ fun unpack(b:ByteArray):SealedData{require(b.size>NONCE+16);return SealedData(b.copyOfRange(0,NONCE),b.copyOfRange(NONCE,b.size))}
 }
