@@ -1,4 +1,4 @@
-package com.kairos.app.ui.theme
+package com.devsoftware.kairos.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
