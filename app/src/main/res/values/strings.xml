@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Kairos</string>
+    <string name="tagline">A letter to the future</string>
+    <string name="new_capsule">New capsule</string>
+    <string name="your_capsules">Your capsules</string>
+    <string name="empty_title">Your future is waiting</string>
+    <string name="empty_body">Seal a letter, voice note, or photo for a moment yet to come.</string>
+</resources>
