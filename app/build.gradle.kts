@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.kairos.app"
+    namespace = "com.devsoftware.kairos"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.kairos.app"
+        applicationId = "com.devsoftware.kairos"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
