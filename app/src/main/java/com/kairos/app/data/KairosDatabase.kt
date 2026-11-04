@@ -1,4 +1,4 @@
-package com.kairos.app.data
+package com.devsoftware.kairos.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
