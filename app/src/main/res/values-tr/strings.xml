@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Kairos</string>
+    <string name="tagline">Geleceğe bir mektup</string>
+    <string name="new_capsule">Yeni kapsül</string>
+    <string name="your_capsules">Kapsüllerin</string>
+    <string name="empty_title">Gelecek seni bekliyor</string>
+    <string name="empty_body">Bir mektubu, ses kaydını veya fotoğrafı gelecekteki bir an için mühürle.</string>
+</resources>
