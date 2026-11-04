@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.devsoftware.kairos.data.CapsuleRepository
 import com.devsoftware.kairos.data.CapsuleDraft
 import com.devsoftware.kairos.notifications.ReminderScheduler
+import com.devsoftware.kairos.security.BiometricGate
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,6 +75,8 @@ private fun KairosApp(activity: FragmentActivity) {
     var dark by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(Page.HOME) }
     var selected by remember { mutableStateOf<Capsule?>(null) }
+    var openedContent by remember { mutableStateOf<String?>(null) }
+    var detailStatus by remember { mutableStateOf<String?>(null) }
     val repository = remember { CapsuleRepository(activity) }
     val rows by repository.observeCapsules().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
@@ -111,7 +114,7 @@ private fun KairosApp(activity: FragmentActivity) {
                 onTheme = { dark = !dark },
                 onCreate = { page = Page.CREATE },
                 onSettings = { page = Page.SETTINGS },
-                onOpen = { selected = it; page = Page.DETAIL }
+                onOpen = { selected = it; openedContent = null; detailStatus = null; page = Page.DETAIL }
             )
             Page.CREATE -> CreatePage(
                 onBack = { page = Page.HOME },
@@ -124,8 +127,29 @@ private fun KairosApp(activity: FragmentActivity) {
                     }
                 }
             )
-            Page.DETAIL -> selected?.let {
-                DetailPage(it, onBack = { page = Page.HOME })
+            Page.DETAIL -> selected?.let { capsule ->
+                DetailPage(capsule, openedContent, detailStatus,
+                    onBack = { page = Page.HOME },
+                    onOpen = {
+                        if (!capsule.isReady) {
+                            detailStatus = "Açılma tarihi henüz gelmedi. Bu kontrol cihaz saatine dayanır; kriptografik zaman kilidi değildir."
+                        } else {
+                            BiometricGate.authenticate(activity,
+                                onSuccess = {
+                                    scope.launch {
+                                        runCatching { repository.readPayload(capsule.id.toString()) }
+                                            .onSuccess { bytes ->
+                                                if (capsule.type == CapsuleType.LETTER) openedContent = bytes.toString(Charsets.UTF_8)
+                                                else detailStatus = "Bu kapsül türünün içerik oynatıcısı sonraki entegrasyonda tamamlanacak."
+                                            }
+                                            .onFailure { detailStatus = "Kapsül açılamadı: ${it.localizedMessage}" }
+                                    }
+                                },
+                                onError = { detailStatus = it }
+                            )
+                        }
+                    }
+                )
             } ?: run { page = Page.HOME }
             Page.SETTINGS -> SettingsPage(dark, onTheme = { dark = !dark }, onBack = { page = Page.HOME })
         }
@@ -327,54 +351,58 @@ private fun CreatePage(
 }
 
 @Composable
-private fun DetailPage(capsule: Capsule, onBack: () -> Unit) {
+private fun DetailPage(
+    capsule: Capsule,
+    openedContent: String?,
+    status: String?,
+    onBack: () -> Unit,
+    onOpen: () -> Unit
+) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             TopBar("Kapsülün", onBack)
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(116.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+                Box(Modifier.size(112.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
                     contentAlignment = Alignment.Center) {
                     Icon(if (capsule.isReady) Icons.Default.Fingerprint else Icons.Default.Lock,
                         contentDescription = null, tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(58.dp))
+                        modifier = Modifier.size(56.dp))
                 }
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(22.dp))
             Text(capsule.title, modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 fontFamily = FontFamily.Serif, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Text(capsule.type.label, modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(30.dp))
-            Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface)) {
+            Spacer(Modifier.height(24.dp))
+            Card(shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp)) {
                     DetailLine("Oluşturulma", dateLabel(capsule.createdAt))
                     HorizontalDivider(Modifier.padding(vertical = 12.dp))
                     DetailLine("Açılma tarihi", dateLabel(capsule.unlockAt))
                     HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                    DetailLine("Durum", if (capsule.isReady) "Açılmaya hazır" else "Mühürlü")
+                    DetailLine("Durum", if (capsule.isReady) "Tarih geldi" else "Mühürlü")
                 }
             }
-            Spacer(Modifier.height(24.dp))
-            Text(if (capsule.isReady) "Bu kapsülün açılma tarihi geldi." else remainingLabel(capsule.unlockAt),
-                modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            if (capsule.isReady) {
-                Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Fingerprint, contentDescription = null)
-                    Spacer(Modifier.width(8.dp)); Text("Biyometrik açma (sonraki aşama)")
-                }
+            Spacer(Modifier.height(22.dp))
+            Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Fingerprint, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Biyometri ile doğrula ve aç")
             }
-            if (capsule.message.isNotBlank()) {
-                Spacer(Modifier.height(24.dp))
-                Text("İÇERİK ÖNİZLEMESİ", color = MaterialTheme.colorScheme.primary,
+            status?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp)) }
+            openedContent?.let {
+                Spacer(Modifier.height(18.dp))
+                Text("MEKTUBUN", color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                Text(capsule.message, modifier = Modifier.padding(top = 8.dp))
+                Text(it, modifier = Modifier.padding(top = 8.dp))
             }
+            Text("Zaman kontrolü cihaz saatini kullanır. Gerçek kriptografik zaman kilidi henüz etkin değildir.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 16.dp))
         }
     }
 }
