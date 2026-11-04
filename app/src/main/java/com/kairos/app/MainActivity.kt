@@ -1,6 +1,8 @@
 package com.devsoftware.kairos
 
 import android.os.Bundle
+import android.os.Build
+import android.content.pm.PackageManager
 import android.Manifest
 import android.net.Uri
 import android.media.MediaRecorder
@@ -9,6 +11,7 @@ import android.graphics.BitmapFactory
 import java.io.File
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -89,6 +92,12 @@ private fun KairosApp(activity: FragmentActivity) {
     val repository = remember { CapsuleRepository(activity) }
     val rows by repository.observeCapsules().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
+    val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     val capsules = remember { mutableStateListOf<Capsule>() }
     LaunchedEffect(rows) {
         val summaries = runCatching { repository.summaries(rows) }.getOrDefault(emptyList())
