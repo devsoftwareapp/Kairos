@@ -1,4 +1,4 @@
-package com.kairos.app.data
+package com.devsoftware.kairos.data
 
 import androidx.room.Dao
 import androidx.room.Insert
