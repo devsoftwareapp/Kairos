@@ -3,6 +3,8 @@ package com.devsoftware.kairos
 import android.os.Bundle
 import android.net.Uri
 import android.media.MediaRecorder
+import android.media.MediaPlayer
+import android.graphics.BitmapFactory
 import java.io.File
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
@@ -81,6 +83,7 @@ private fun KairosApp(activity: FragmentActivity) {
     var selected by remember { mutableStateOf<Capsule?>(null) }
     var openedContent by remember { mutableStateOf<String?>(null) }
     var detailStatus by remember { mutableStateOf<String?>(null) }
+    var openedMediaPath by remember { mutableStateOf<String?>(null) }
     val repository = remember { CapsuleRepository(activity) }
     val rows by repository.observeCapsules().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
@@ -118,7 +121,7 @@ private fun KairosApp(activity: FragmentActivity) {
                 onTheme = { dark = !dark },
                 onCreate = { page = Page.CREATE },
                 onSettings = { page = Page.SETTINGS },
-                onOpen = { selected = it; openedContent = null; detailStatus = null; page = Page.DETAIL }
+                onOpen = { selected = it; openedContent = null; openedMediaPath = null; detailStatus = null; page = Page.DETAIL }
             )
             Page.CREATE -> CreatePage(
                 activity = activity,
@@ -133,7 +136,7 @@ private fun KairosApp(activity: FragmentActivity) {
                 }
             )
             Page.DETAIL -> selected?.let { capsule ->
-                DetailPage(capsule, openedContent, detailStatus,
+                DetailPage(capsule, openedContent, openedMediaPath, detailStatus,
                     onBack = { page = Page.HOME },
                     onOpen = {
                         if (!capsule.isReady) {
@@ -144,8 +147,14 @@ private fun KairosApp(activity: FragmentActivity) {
                                     scope.launch {
                                         runCatching { repository.readPayload(capsule.id) }
                                             .onSuccess { bytes ->
-                                                if (capsule.type == CapsuleType.LETTER) openedContent = bytes.toString(Charsets.UTF_8)
-                                                else detailStatus = "Bu kapsül türünün içerik oynatıcısı sonraki entegrasyonda tamamlanacak."
+                                                if (capsule.type == CapsuleType.LETTER) {
+                                                    openedContent = bytes.toString(Charsets.UTF_8)
+                                                } else {
+                                                    val extension = if (capsule.type == CapsuleType.PHOTO) "jpg" else "m4a"
+                                                    val file = File(cacheDir, "kairos_opened_${capsule.id}.$extension")
+                                                    file.writeBytes(bytes)
+                                                    openedMediaPath = file.absolutePath
+                                                }
                                             }
                                             .onFailure { detailStatus = "Kapsül açılamadı: ${it.localizedMessage}" }
                                     }
@@ -380,6 +389,7 @@ private fun CreatePage(
 private fun DetailPage(
     capsule: Capsule,
     openedContent: String?,
+    openedMediaPath: String?,
     status: String?,
     onBack: () -> Unit,
     onOpen: () -> Unit
@@ -425,6 +435,36 @@ private fun DetailPage(
                 Text("MEKTUBUN", color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Text(it, modifier = Modifier.padding(top = 8.dp))
+            }
+            openedMediaPath?.let { path ->
+                if (capsule.type == CapsuleType.PHOTO) {
+                    val bitmap = remember(path) { BitmapFactory.decodeFile(path) }
+                    bitmap?.let {
+                        Spacer(Modifier.height(16.dp))
+                        androidx.compose.foundation.Image(bitmap = it.asImageBitmap(), contentDescription = "Açılan fotoğraf",
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp))
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    var playing by remember { mutableStateOf(false) }
+                    Button(onClick = {
+                        runCatching {
+                            if (playing) {
+                                playing = false
+                            } else {
+                                MediaPlayer().apply {
+                                    setDataSource(path)
+                                    setOnCompletionListener { player -> player.release(); playing = false }
+                                    prepare()
+                                    start()
+                                    playing = true
+                                }
+                            }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (playing) "Ses oynatılıyor" else "Ses kaydını oynat")
+                    }
+                }
             }
             Text("Zaman kontrolü cihaz saatini kullanır. Gerçek kriptografik zaman kilidi henüz etkin değildir.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
