@@ -1,4 +1,4 @@
-package com.kairos.app.security
+package com.devsoftware.kairos.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
