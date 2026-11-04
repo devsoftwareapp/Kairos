@@ -1,6 +1,7 @@
 package com.devsoftware.kairos
 
 import android.os.Bundle
+import android.Manifest
 import android.net.Uri
 import android.media.MediaRecorder
 import android.media.MediaPlayer
@@ -35,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -151,7 +153,7 @@ private fun KairosApp(activity: FragmentActivity) {
                                                     openedContent = bytes.toString(Charsets.UTF_8)
                                                 } else {
                                                     val extension = if (capsule.type == CapsuleType.PHOTO) "jpg" else "m4a"
-                                                    val file = File(cacheDir, "kairos_opened_${capsule.id}.$extension")
+                                                    val file = File(activity.cacheDir, "kairos_opened_${capsule.id}.$extension")
                                                     file.writeBytes(bytes)
                                                     openedMediaPath = file.absolutePath
                                                 }
