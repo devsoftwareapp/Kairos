@@ -164,8 +164,7 @@ private fun HomePage(
                         Text("Gelecek seni bekliyor", fontFamily = FontFamily.Serif,
                             fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(8.dp))
-                        Text("Bir mektubu, ses kaydını veya fotoğrafı
-gelecekteki bir an için mühürle.",
+                        Text("Bir mektubu, ses kaydını veya fotoğrafı gelecekteki bir an için mühürle.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(18.dp))
