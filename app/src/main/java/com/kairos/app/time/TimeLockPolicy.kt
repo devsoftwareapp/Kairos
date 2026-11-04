@@ -1,4 +1,4 @@
-package com.kairos.app.time
+package com.devsoftware.kairos.time
 
 /**
  * UI-level policy placeholder only.
