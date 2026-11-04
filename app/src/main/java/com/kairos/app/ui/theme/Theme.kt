@@ -1,6 +1,5 @@
 package com.devsoftware.kairos.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -19,13 +18,12 @@ private val KairosDark = darkColorScheme(
     primary = Color(0xFFF2B04A),
     onPrimary = Color(0xFF241704),
     secondary = Color(0xFFD9BD96),
-    background = Color(0xFF0E1B27),
-    surface = Color(0xFF16283A),
-    secondaryContainer = Color(0xFF3A3020)
+    background = Color(0xFF101923),
+    surface = Color(0xFF1B2935),
+    secondaryContainer = Color(0xFF46351F)
 )
 
 @Composable
 fun KairosTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) KairosDark else KairosLight
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = KairosLight, content = content)
 }
