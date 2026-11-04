@@ -24,7 +24,7 @@ class CapsuleRepository(context:Context){
   try{dao.insert(CapsuleEntity(id,title,file.absolutePath,d.type,System.currentTimeMillis(),d.unlockAt,wrapped))}
   catch(t:Throwable){file.delete();throw t};id
  }
- suspend fun summaries(rows:List<CapsuleEntity>):List<CapsuleSummary>=withContext(Dispatchers.IO){
+ suspend fun summaries(rows:List<CapsuleEntity>):List<CapsuleSummary> =withContext(Dispatchers.IO){
   rows.map{r->val title=AesGcmCrypto.decrypt(unwrap(r),AesGcmCrypto.unpack(r.encryptedTitle),r.id.toByteArray()).toString(Charsets.UTF_8)
    CapsuleSummary(r.id,title,r.payloadType,r.createdAtEpochMillis,r.unlockAtEpochMillis)}
  }
