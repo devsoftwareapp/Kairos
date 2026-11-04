@@ -1,6 +1,10 @@
 package com.devsoftware.kairos
 
 import android.os.Bundle
+import android.net.Uri
+import android.media.MediaRecorder
+import java.io.File
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -117,11 +121,12 @@ private fun KairosApp(activity: FragmentActivity) {
                 onOpen = { selected = it; openedContent = null; detailStatus = null; page = Page.DETAIL }
             )
             Page.CREATE -> CreatePage(
+                activity = activity,
                 onBack = { page = Page.HOME },
                 onSave = { title, type, message, unlock ->
                     scope.launch {
                         runCatching {
-                            val id = repository.create(CapsuleDraft(title, type.name, unlock, message.toByteArray(Charsets.UTF_8)))
+                            val id = repository.create(CapsuleDraft(title, type.name, unlock, message))
                             ReminderScheduler.schedule(activity, id, title, unlock)
                         }.onSuccess { page = Page.HOME }
                     }
@@ -270,82 +275,103 @@ private fun CapsuleCard(capsule: Capsule, onClick: () -> Unit) {
 
 @Composable
 private fun CreatePage(
+    activity: FragmentActivity,
     onBack: () -> Unit,
-    onSave: (String, CapsuleType, String, Long) -> Unit
+    onSave: (String, CapsuleType, ByteArray, Long) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(CapsuleType.LETTER) }
-    var date by remember {
-        mutableStateOf(SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR"))
-            .format(Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)))
+    var mediaBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var mediaLabel by remember { mutableStateOf<String?>(null) }
+    var date by remember { mutableStateOf(SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR")).format(Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000))) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember { mutableStateOf<File?>(null) }
+    var recording by remember { mutableStateOf(false) }
+
+    val imagePicker = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { runCatching { activity.contentResolver.openInputStream(it)?.use { input -> input.readBytes() } }
+            .onSuccess { mediaBytes = it; mediaLabel = "Fotoğraf seçildi" }
+            .onFailure { error = "Fotoğraf okunamadı." } }
     }
-    var error by remember { mutableStateOf(false) }
+    val audioPicker = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { runCatching { activity.contentResolver.openInputStream(it)?.use { input -> input.readBytes() } }
+            .onSuccess { mediaBytes = it; mediaLabel = "Ses dosyası seçildi" }
+            .onFailure { error = "Ses dosyası okunamadı." } }
+    }
+    val micPermission = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            runCatching {
+                val file = File(activity.cacheDir, "kairos_recording_${System.currentTimeMillis()}.m4a")
+                val r = MediaRecorder()
+                r.setAudioSource(MediaRecorder.AudioSource.MIC)
+                r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                r.setOutputFile(file.absolutePath)
+                r.prepare(); r.start()
+                recorder = r; recordingFile = file; recording = true
+            }.onFailure { error = "Kayıt başlatılamadı: ${it.localizedMessage}" }
+        } else error = "Ses kaydı için mikrofon izni gerekli."
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             TopBar("Yeni kapsül", onBack)
-            Text("Neyi geleceğe bırakmak istiyorsun?", fontFamily = FontFamily.Serif,
-                fontSize = 25.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(20.dp))
-            Text("KAPSÜL TÜRÜ", style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Neyi geleceğe bırakmak istiyorsun?", fontFamily = FontFamily.Serif, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CapsuleType.values().forEach { item ->
-                    FilterChip(
-                        selected = type == item,
-                        onClick = { type = item },
-                        label = { Text(item.label) },
-                        leadingIcon = { Icon(item.icon, contentDescription = null) }
-                    )
+                    FilterChip(selected = type == item, onClick = { type = item; mediaBytes = null; mediaLabel = null; error = null },
+                        label = { Text(item.label) }, leadingIcon = { Icon(item.icon, null) })
+                }
+            }
+            OutlinedTextField(value = title, onValueChange = { title = it; error = null }, modifier = Modifier.fillMaxWidth(),
+                label = { Text("Kapsül başlığı") }, placeholder = { Text("Örn. Gelecekteki bana") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences), shape = RoundedCornerShape(16.dp))
+            Spacer(Modifier.height(12.dp))
+            when (type) {
+                CapsuleType.LETTER -> OutlinedTextField(value = message, onValueChange = { message = it },
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 140.dp),
+                    label = { Text("Mektubun") }, placeholder = { Text("İçinden geçenleri buraya yaz...") },
+                    minLines = 5, shape = RoundedCornerShape(16.dp))
+                CapsuleType.PHOTO -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { imagePicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Image, null); Spacer(Modifier.width(8.dp)); Text("Galeriden fotoğraf seç")
+                    }
+                    mediaLabel?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                }
+                CapsuleType.VOICE -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        if (recording) {
+                            runCatching { recorder?.stop() }.onFailure { error = "Kayıt tamamlanamadı." }
+                            recorder?.release(); recorder = null; recording = false
+                            recordingFile?.let { file -> runCatching { mediaBytes = file.readBytes(); mediaLabel = "Ses kaydı hazır" } }
+                        } else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text(if (recording) "Kaydı durdur" else "Ses kaydet")
+                    }
+                    OutlinedButton(onClick = { audioPicker.launch("audio/*") }, modifier = Modifier.fillMaxWidth()) { Text("Dosyadan ses seç") }
+                    mediaLabel?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 }
             }
             Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = title, onValueChange = { title = it; error = false },
-                modifier = Modifier.fillMaxWidth(), label = { Text("Kapsül başlığı") },
-                placeholder = { Text("Örn. Gelecekteki bana") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                shape = RoundedCornerShape(16.dp)
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = message, onValueChange = { message = it },
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 130.dp),
-                label = { Text(if (type == CapsuleType.LETTER) "Mektubun" else "Not (isteğe bağlı)") },
-                placeholder = { Text("İçinden geçenleri buraya yaz...") },
-                minLines = 4, shape = RoundedCornerShape(16.dp)
-            )
-            Spacer(Modifier.height(18.dp))
-            Text("NE ZAMAN AÇILSIN?", style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            OutlinedTextField(
-                value = date, onValueChange = { date = it; error = false },
-                modifier = Modifier.fillMaxWidth(), label = { Text("Açılma tarihi (GG.AA.YYYY)") },
-                leadingIcon = { Icon(Icons.Default.Event, contentDescription = null) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true, shape = RoundedCornerShape(16.dp)
-            )
-            AnimatedVisibility(error) {
-                Text("Başlık ve geçerli, gelecekte bir tarih gir.", color = MaterialTheme.colorScheme.error)
+            Text("NE ZAMAN AÇILSIN?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            OutlinedTextField(value = date, onValueChange = { date = it; error = null }, modifier = Modifier.fillMaxWidth(),
+                label = { Text("Açılma tarihi (GG.AA.YYYY)") }, leadingIcon = { Icon(Icons.Default.Event, null) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, shape = RoundedCornerShape(16.dp))
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Button(onClick = {
+                val parsed = runCatching { SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR")).apply { isLenient = false }.parse(date)?.time }.getOrNull()
+                val content = when (type) { CapsuleType.LETTER -> message.toByteArray(Charsets.UTF_8); else -> mediaBytes }
+                if (title.isBlank() || parsed == null || parsed <= System.currentTimeMillis()) error = "Başlık ve gelecekte geçerli bir tarih gir."
+                else if (content == null || content.isEmpty()) error = "Kapsül içeriğini ekle."
+                else onSave(title.trim(), type, content, parsed)
+            }, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp)) {
+                Icon(Icons.Default.Lock, null); Spacer(Modifier.width(8.dp)); Text("Şifrele ve mühürle")
             }
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    val parsed = runCatching {
-                        SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR")).apply { isLenient = false }
-                            .parse(date)?.time
-                    }.getOrNull()
-                    if (title.isBlank() || parsed == null || parsed <= System.currentTimeMillis()) {
-                        error = true
-                    } else onSave(title.trim(), type, message.trim(), parsed)
-                },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) { Icon(Icons.Default.Lock, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Kapsülü mühürle") }
-            Spacer(Modifier.height(14.dp))
-            Text("Not: Bu sürüm arayüz prototipidir. Gerçek şifreleme ve zaman kilidi henüz etkin değildir.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(12.dp))
+            Text("İçerik cihazında AES-GCM ile şifrelenir. Açılma tarihi kontrolü cihaz saatine dayanır; henüz kriptografik zaman kilidi değildir.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp, bottom = 12.dp))
         }
     }
 }
