@@ -1,4 +1,4 @@
-package com.kairos.app
+package com.devsoftware.kairos
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -24,7 +24,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kairos.app.ui.theme.KairosTheme
+import com.devsoftware.kairos.ui.theme.KairosTheme
 
 data class CapsuleUi(
     val title: String,
